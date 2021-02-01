@@ -24,8 +24,6 @@ elif args.datatype == 'cifar':
 
 data_split = sample_iid(train_data, args.number_client)
 
-# train_data, test_data = load_mnist(mnist_path)
-# data_split = sample_iid(train_data, args.number_client)
 
 clients = []
 for i in range(args.number_client):
@@ -35,6 +33,9 @@ for i in range(args.number_client):
 server = Server(clients, test_data, args)
 
 server.init_paras()
+# from torchsummary import summary
+# summary(server.server_model, (1, 784))
+# exit()
 server.train()
 
 

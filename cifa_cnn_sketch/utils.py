@@ -1,7 +1,7 @@
 """
 Load data:
 
-load and preprocess data/
+load and preprocess data
 
 sample:
 sample the data in an IID way.
@@ -11,11 +11,13 @@ sample the data in an IID way.
 from torchvision import datasets, transforms
 import numpy as np
 
+
 def load_mnist(path):
     trans_mnist = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
     dataset_train = datasets.MNIST(path, train=True, download=True, transform=trans_mnist)
     dataset_test = datasets.MNIST(path, train=False, download=True, transform=trans_mnist)
     return dataset_train, dataset_test
+
 
 def load_cifar(path_cifar):
     transform_train = transforms.Compose([
@@ -34,13 +36,13 @@ def load_cifar(path_cifar):
     return dataset_train, dataset_test
 
 
-# randomly shuffle tha training data and dispense training data to differenent users
-    # Generate random indices and random signs
-    # Args:
-    #    dataset: training data
-    #    num_users: number of users
-    # Return:
-    #    data_split: a list of indices for users
+# Randomly shuffle the training data and dispense training data to different users
+# Generate random indices and random signs
+# Args:
+#    dataset: training data
+#    num_users: number of users
+# Return:
+#    data_split: a list of indices for users
 def sample_iid(dataset, num_users):
     num_items = int(len(dataset) / num_users)
     data_split = []

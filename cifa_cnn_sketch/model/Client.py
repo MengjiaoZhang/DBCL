@@ -1,4 +1,5 @@
 import copy
+
 import torch
 from torch.utils.data import DataLoader, Dataset
 from torch.optim.lr_scheduler import CosineAnnealingLR
@@ -39,12 +40,20 @@ class Client:
         elif self.args.model_type == 'CNN_sketch' and self.args.datatype == 'mnist':
             self.model = CNNMnist_Sketch(self.args.p).to(self.args.device)
 
-    # get gradients from server
-    def get_paras(self, paras):
+    # get gradients and sketch matrix S from server
+    def get_paras(self, paras, hash_idxs, rand_sgns):
+        self.hash_idxs = hash_idxs
+        self.rand_sgns = rand_sgns
         self.prev_paras = paras
         self.model.load_state_dict(paras)
 
-    def adjust_learning_rate(self, optimizer, lr):
+    def adjust_learning_rate(self, optimizer, epoch, step):
+        """Sets the learning rate to the initial LR decayed by 10 every 30 epochs"""
+        lr_ad = self.args.learningrate_client * (0.1 ** (epoch // step))
+        if lr_ad <= 1e-5:
+            lr = 1e-5
+        else:
+            lr = lr_ad
         for param_group in optimizer.param_groups:
             param_group['lr'] = lr
 
@@ -59,6 +68,7 @@ class Client:
 
         optimizer = torch.optim.Adam(self.model.parameters(), lr=self.args.learningrate_client)
         scheduler = CosineAnnealingLR(optimizer, T_max=10, eta_min=1e-5)
+        # scheduler = ExponentialLR(optimizer, 0.9, last_epoch=-1)
 
         for iter in range(self.args.local_epochs):
             print('    local epoch', iter)
@@ -69,7 +79,7 @@ class Client:
 
                 optimizer.zero_grad()
                 images, labels = images.to(self.args.device), labels.to(self.args.device)
-                log_probs = self.model(images)
+                log_probs = self.model(images, self.hash_idxs, self.rand_sgns)
                 loss = self.loss_func(log_probs, labels)
                 loss.backward()
                 optimizer.step()
@@ -85,7 +95,6 @@ class Client:
             epoch_losses.append(epoch_loss)
             epoch_acces.append(epoch_acc)
         return sum(epoch_losses) / len(epoch_losses), sum(epoch_acces) / len(epoch_acces)
-
 
     # every client sends gradients to server after training on local data for several epochs
     def send_grads(self):

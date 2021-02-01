@@ -2,8 +2,13 @@ import math
 import torch
 
 # cpu = torch.device("cpu")
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-# device = cpu
+# device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+from conf import Args
+
+
+args = Args()
+
+device = args.device
 
 class Sketch():
     
@@ -33,12 +38,13 @@ class Sketch():
     def countsketch(a, hash_idx, rand_sgn):
         m, n = a.shape
         s = hash_idx.shape[1]
-        c = torch.zeros([m, s], dtype=torch.float32)
+        # c = torch.zeros([m, s], dtype=torch.float32)
         b = a.mul(rand_sgn)
+        c = torch.sum(b[:, hash_idx], dim=1)
         
-        for h in range(s):
-            selected = hash_idx[:, h]
-            c[:, h] = torch.sum(b[:, selected], dim=1)
+        # for h in range(s):
+        #     selected = hash_idx[:, h]
+        #     c[:, h] = torch.sum(b[:, selected], dim=1)
 
         return c
     
@@ -56,9 +62,13 @@ class Sketch():
         m, s = c.shape
         n = len(rand_sgn)
         b = torch.zeros([m, n], dtype=torch.float32).to(device)
-        for h in range(s):
-            selected = hash_idx[:, h]
-            b[:, selected] = c[:, h].reshape(m, 1)
+        # print(b.shape, c.shape, hash_idx.shape, s);exit()
+        idx = torch.stack([torch.arange(s), torch.arange(s)]).T.reshape((-1,))
+        selected = hash_idx.T.reshape((-1,))
+        b[:, selected] = c[:, idx]
+        # for h in range(s):
+        #     selected = hash_idx[:, h]
+        #     b[:, selected] = c[:, h].reshape(m, 1)
         b = b.mul(rand_sgn)
         return b
     
