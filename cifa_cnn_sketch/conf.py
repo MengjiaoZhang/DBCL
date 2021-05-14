@@ -32,7 +32,7 @@ class Args:
         self.sample_rate = 0.1
         self.number_client = 100
         self.model_type = 'CNN_sketch'
-        self.datatype = 'cifar'
+        self.datatype = 'mnist'
         self.dim_in = 784
         self.dim_out = 10
         self.p = 2
@@ -44,4 +44,4 @@ class Args:
         self.test_batch_size = 1000
         self.gpu = 1
         self.verbose = 1
-        self.target = 80
+        self.target = 97

@@ -42,10 +42,14 @@ class Client:
 
     # get gradients and sketch matrix S from server
     def get_paras(self, paras, hash_idxs, rand_sgns):
-        self.hash_idxs = hash_idxs
-        self.rand_sgns = rand_sgns
-        self.prev_paras = paras
-        self.model.load_state_dict(paras)
+        if self.args.model_type == 'MLP_SketchLinear' or self.args.model_type == 'CNN_sketch':
+            self.hash_idxs = hash_idxs
+            self.rand_sgns = rand_sgns
+            self.prev_paras = paras
+            self.model.load_state_dict(paras)
+        else:
+            self.prev_paras = paras
+            self.model.load_state_dict(paras)
 
     def adjust_learning_rate(self, optimizer, epoch, step):
         """Sets the learning rate to the initial LR decayed by 10 every 30 epochs"""
@@ -79,7 +83,10 @@ class Client:
 
                 optimizer.zero_grad()
                 images, labels = images.to(self.args.device), labels.to(self.args.device)
-                log_probs = self.model(images, self.hash_idxs, self.rand_sgns)
+                if self.args.model_type == 'MLP_SketchLinear' or self.args.model_type == 'CNN_sketch':
+                    log_probs = self.model(images, self.hash_idxs, self.rand_sgns)
+                else:
+                    log_probs = self.model(images)
                 loss = self.loss_func(log_probs, labels)
                 loss.backward()
                 optimizer.step()

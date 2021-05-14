@@ -43,7 +43,8 @@ class Server:
         self.server_model.train()
         print('Whether run on GPU', next(self.server_model.parameters()).is_cuda)
         self.global_weights = copy.deepcopy(self.server_model.state_dict())
-        self.sizes = self.server_model.weight_sizes()
+        if self.args.model_type == 'MLP_SketchLinear' or self.args.model_type == 'CNN_sketch':
+            self.sizes = self.server_model.weight_sizes()
 
     # collect local gradients from the selected clients in each communicaiton rounds
     def get_grads(self):
@@ -53,18 +54,25 @@ class Server:
     # broadcast global gradients and sketch matrix to all selected clients
     def broadcast(self):
         # randomly generate sketch matrix in a communication round
-        hash_idxs = []
-        rand_sgns = []
-        for size in self.sizes:
-            hash_idx, rand_sgn = Sketch.rand_hashing(size, q=self.args.p)
-            hash_idxs.append(hash_idx)
-            rand_sgns.append(rand_sgn)
-        num_client = int(len(self.clients) * self.args.sample_rate)
-        # select working client in a round
-        self.working_client = np.random.choice(len(self.clients), num_client, replace=False)
-        for client_id in self.working_client:
-            self.clients[client_id].get_paras(copy.deepcopy(self.global_weights), hash_idxs, rand_sgns)
-        return hash_idxs, rand_sgns
+        if self.args.model_type == 'MLP_SketchLinear' or self.args.model_type == 'CNN_sketch':
+            hash_idxs = []
+            rand_sgns = []
+            for size in self.sizes:
+                hash_idx, rand_sgn = Sketch.rand_hashing(size, q=self.args.p)
+                hash_idxs.append(hash_idx)
+                rand_sgns.append(rand_sgn)
+            num_client = int(len(self.clients) * self.args.sample_rate)
+            # select working client in a round
+            self.working_client = np.random.choice(len(self.clients), num_client, replace=False)
+            for client_id in self.working_client:
+                self.clients[client_id].get_paras(copy.deepcopy(self.global_weights), hash_idxs, rand_sgns)
+            return hash_idxs, rand_sgns
+        else:
+            num_client = int(len(self.clients) * self.args.sample_rate)
+            self.working_client = np.random.choice(len(self.clients), num_client, replace=False)
+            # self.working_client = [0]
+            for client_id in self.working_client:
+                self.clients[client_id].get_paras(copy.deepcopy(self.global_weights), None, None)
 
     # compute the average of the collected gradients
     def _average(self, x):
@@ -94,8 +102,9 @@ class Server:
         err = 0
         i = 0
         delta_ws, delta_tilde_ws = [], []
-        w_old_list = list(w_old.values())[3:]
-        w_new_list = list(w_new.values())[3:]
+        start_index = 1 if self.args.model_type == 'CNN_sketch' and self.args.datatype == 'cifar' else 0
+        w_old_list = list(w_old.values())[start_index:]
+        w_new_list = list(w_new.values())[start_index:]
         for w_o, w_n in zip(w_old_list, w_new_list):
             if len(w_o.shape) == 1:
                 continue
@@ -131,8 +140,9 @@ class Server:
         err = 0
         i = 0
         delta_ws, delta_tilde_ws, delta_tilde_ws_scale = [], [], []
-        w_old_list = list(w_old.values())[2:]
-        w_new_list = list(w_new.values())[2:]
+        start_index = 2 if self.args.model_type == 'CNN_sketch' and self.args.datatype == 'cifar' else 0
+        w_old_list = list(w_old.values())[start_index:]
+        w_new_list = list(w_new.values())[start_index:]
         for w_o, w_n in zip(w_old_list, w_new_list):
             if len(w_o.shape) == 1:
                 continue
@@ -170,48 +180,67 @@ class Server:
         w_old, hash_idxs_old, rand_sgns_old = None, None, None
         for i in range(round):
             print('server round', i)
-            w_new = copy.deepcopy(self.global_weights)
-            hash_idxs_new, rand_sgns_new = self.broadcast()
-            if i >= 1:
-                w_error, w_err_scale, w_err_cosine = self.w_err_client(w_old, w_new, hash_idxs_old, rand_sgns_old, hash_idxs_new, rand_sgns_new)
-                # w_error_server = self.w_err_server(w_old, w_new, hash_idxs_old, rand_sgns_old)
-                errs_client.append(w_error.detach().cpu().numpy())
-                errs_client_scale.append(w_err_scale.detach().cpu().numpy())
-                errs_client_cosine.append(w_err_cosine.detach().cpu().numpy())
-                # errs_server.append(w_error_server.detach().cpu().numpy())
-                print('client side weight error:', w_error.detach().cpu().numpy())
-                print('client side weight error scale:', w_err_scale.detach().cpu().numpy())
-                print('client side weight error cosine:', w_err_cosine.detach().cpu().numpy())
-                # print('server sizde weight error:', w_error_server.detach().cpu().numpy())
-            w_old = w_new
-            hash_idxs_old, rand_sgns_old = hash_idxs_new, rand_sgns_new
+            if self.args.model_type == 'MLP_SketchLinear' or self.args.model_type == 'CNN_sketch':
+                w_new = copy.deepcopy(self.global_weights)
+                hash_idxs_new, rand_sgns_new = self.broadcast()
+                if i >= 1:
+                    w_error, w_err_scale, w_err_cosine = self.w_err_client(w_old, w_new, hash_idxs_old, rand_sgns_old, hash_idxs_new, rand_sgns_new)
+                    # w_error_server = self.w_err_server(w_old, w_new, hash_idxs_old, rand_sgns_old)
+                    errs_client.append(w_error.detach().cpu().numpy())
+                    errs_client_scale.append(w_err_scale.detach().cpu().numpy())
+                    errs_client_cosine.append(w_err_cosine.detach().cpu().numpy())
+                    # errs_server.append(w_error_server.detach().cpu().numpy())
+                    print('client side weight error:', w_error.detach().cpu().numpy())
+                    print('client side weight error scale:', w_err_scale.detach().cpu().numpy())
+                    print('client side weight error cosine:', w_err_cosine.detach().cpu().numpy())
+                    # print('server sizde weight error:', w_error_server.detach().cpu().numpy())
+                w_old = w_new
+                hash_idxs_old, rand_sgns_old = hash_idxs_new, rand_sgns_new
 
-            for client_id in self.working_client:
-                print('client', client_id)
-                client = self.clients[client_id]
-                train_loss, train_acc = client.train(i)
-                print('client', client_id, ' -- ', 'train loss:', train_loss, 'train_acc:', train_acc)
-            self.update_paras()
-            acc_test, test_loss = self.test()
-            accs.append(acc_test)
-            losses.append(test_loss)
-            if acc_test >= self.args.target or i == (round-1):
-                pickle.dump(accs, open('data/results/accs_' + self.args.model_type + self.args.datatype + '_lr_' + str(
-                    self.args.sample_rate) + 'target_acc_' + str(self.args.target), 'wb'))
-                pickle.dump(losses, open('data/results/losses_' + self.args.model_type + self.args.datatype + '_lr_' + str(
-                    self.args.sample_rate) + 'target_acc_' + str(self.args.target), 'wb'))
-                pickle.dump(errs_client, open('data/results/w_errs_client' + self.args.model_type + self.args.datatype + '_lr_' + str(
-                    self.args.sample_rate) + 'target_acc_' + str(self.args.target), 'wb'))
-                pickle.dump(errs_client_scale, open(
-                    'data/results/w_errs_client_scale' + self.args.model_type + self.args.datatype + '_lr_' + str(
+                for client_id in self.working_client:
+                    print('client', client_id)
+                    client = self.clients[client_id]
+                    train_loss, train_acc = client.train(i)
+                    print('client', client_id, ' -- ', 'train loss:', train_loss, 'train_acc:', train_acc)
+                self.update_paras()
+                acc_test, test_loss = self.test()
+                accs.append(acc_test)
+                losses.append(test_loss)
+                if acc_test >= self.args.target or i == (round-1):
+                    pickle.dump(accs, open('data/results/accs_' + self.args.model_type + self.args.datatype + '_lr_' + str(
                         self.args.sample_rate) + 'target_acc_' + str(self.args.target), 'wb'))
-                pickle.dump(errs_client_cosine, open(
-                    'data/results/w_errs_client_cosine' + self.args.model_type + self.args.datatype + '_lr_' + str(
+                    pickle.dump(losses, open('data/results/losses_' + self.args.model_type + self.args.datatype + '_lr_' + str(
                         self.args.sample_rate) + 'target_acc_' + str(self.args.target), 'wb'))
-                # pickle.dump(errs_server, open('data/results/w_errs_server' + self.args.model_type + self.args.datatype + '_lr_' + str(
-                #     self.args.sample_rate) + 'target_acc_' + str(self.args.target), 'wb'))
-                # print('Round {:3d}, Average loss {:.4f}, Weight error {:.4f}'.format(i, test_loss, w_error))
-                break
+                    pickle.dump(errs_client, open('data/results/w_errs_client' + self.args.model_type + self.args.datatype + '_lr_' + str(
+                        self.args.sample_rate) + 'target_acc_' + str(self.args.target), 'wb'))
+                    pickle.dump(errs_client_scale, open(
+                        'data/results/w_errs_client_scale' + self.args.model_type + self.args.datatype + '_lr_' + str(
+                            self.args.sample_rate) + 'target_acc_' + str(self.args.target), 'wb'))
+                    pickle.dump(errs_client_cosine, open(
+                        'data/results/w_errs_client_cosine' + self.args.model_type + self.args.datatype + '_lr_' + str(
+                            self.args.sample_rate) + 'target_acc_' + str(self.args.target), 'wb'))
+                    # pickle.dump(errs_server, open('data/results/w_errs_server' + self.args.model_type + self.args.datatype + '_lr_' + str(
+                    #     self.args.sample_rate) + 'target_acc_' + str(self.args.target), 'wb'))
+                    # print('Round {:3d}, Average loss {:.4f}, Weight error {:.4f}'.format(i, test_loss, w_error))
+                    break
+            else:
+                self.broadcast()
+                for client_id in self.working_client:
+                    print('client', client_id)
+                    client = self.clients[client_id]
+                    train_loss, train_acc = client.train(i)
+                    print('client', client_id, ' -- ', 'train loss:', train_loss, 'train_acc:', train_acc)
+                self.update_paras()
+                acc_test, test_loss = self.test()
+                accs.append(str(float(acc_test)) + '\n')
+                losses.append(str(float(test_loss)) + '\n')
+                if acc_test >= self.args.target or i==round:
+                    open('data/results/accs_' + self.args.datatype + self.args.model_type + self.args.datatype + '_lr_' + str(self.args.sample_rate)
+                        + 'target_acc_' + str(self.args.target), 'w').writelines(accs)
+                    open('data/results/losses_' + self.args.datatype + self.args.model_type + self.args.datatype + '_lr_' + str(self.args.sample_rate)
+                        + 'target_acc_' + str(self.args.target), 'w').writelines(losses)
+                    print('Round {:3d}, Average loss {:.4f}'.format(i, test_loss))
+                    break
 
     # test the trained model with test data
     def test(self):
@@ -223,7 +252,10 @@ class Server:
             if self.args.gpu != -1 and torch.cuda.is_available():
                 data, target = data.cuda(), target.cuda()
             data, target = data.to(self.args.device), target.to(self.args.device)
-            log_probs = self.server_model(data, [None] * len(self.sizes), [None] * len(self.sizes))
+            if self.args.model_type == 'MLP_SketchLinear' or self.args.model_type == 'CNN_sketch':
+                log_probs = self.server_model(data, [None] * len(self.sizes), [None] * len(self.sizes))
+            else:
+                log_probs = self.server_model(data)
             # sum up batch loss
             test_loss += F.cross_entropy(log_probs, target, reduction='sum').item()
             # get the index of the max log-probability

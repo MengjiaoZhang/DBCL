@@ -61,9 +61,9 @@ class Sketch():
     def transpose_countsketch(c, hash_idx, rand_sgn):
         m, s = c.shape
         n = len(rand_sgn)
+        q = n // s
         b = torch.zeros([m, n], dtype=torch.float32).to(device)
-        # print(b.shape, c.shape, hash_idx.shape, s);exit()
-        idx = torch.stack([torch.arange(s), torch.arange(s)]).T.reshape((-1,))
+        idx = torch.repeat_interleave(torch.arange(s), q, dim=-1)
         selected = hash_idx.T.reshape((-1,))
         b[:, selected] = c[:, idx]
         # for h in range(s):
